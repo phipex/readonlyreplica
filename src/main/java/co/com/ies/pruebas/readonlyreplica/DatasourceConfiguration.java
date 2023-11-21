@@ -2,24 +2,26 @@ package co.com.ies.pruebas.readonlyreplica;
 
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManagerFactory;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 import javax.sql.DataSource;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Properties;
 
 @Configuration
+//@EnableJpaRepositories(basePackageClasses = DatasourceConfiguration.class, enableDefaultTransactions = false)
+//@EnableTransactionManagement
+//@EnableAspectJAutoProxy
 public class DatasourceConfiguration {
 
     @Bean
@@ -48,33 +50,36 @@ public class DatasourceConfiguration {
 
     @Bean
     @Primary
-    public TransactionRoutingDataSource routingDataSource(DataSource masterDataSource, DataSource slaveDataSource) {
-
-        return new TransactionRoutingDataSource(masterDataSource, slaveDataSource);
+    public DataSource routingDataSource(DataSource masterDataSource, DataSource slaveDataSource) {
+        return new RoutingDS(
+                masterDataSource,
+                slaveDataSource
+        );
     }
 
     @Bean
-    @Primary
-    public PlatformTransactionManager transactionManager(@Qualifier("jpaTxManager") PlatformTransactionManager wrapped) {
-        return new ReplicaAwareTransactionManager(wrapped);
+    public PlatformTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {
+        return new JpaTransactionManager(entityManagerFactory);
     }
 
-    @Bean(name = "jpaTxManager")
-    public PlatformTransactionManager jpaTransactionManager(EntityManagerFactory emf) {
-        return new JpaTransactionManager(emf);
-    }
 
     @Bean
-    public BeanPostProcessor dialectProcessor() {
+    public EntityManagerFactory entityManagerFactory(DataSource dataSource) {
+        HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
+        vendorAdapter.setGenerateDdl(false);
 
-        return new BeanPostProcessor() {
-            @Override
-            public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
-                if (bean instanceof HibernateJpaVendorAdapter) {
-                    ((HibernateJpaVendorAdapter) bean).getJpaDialect().setPrepareConnection(false);
-                }
-                return bean;
-            }
-        };
+        LocalContainerEntityManagerFactoryBean managerFactoryBean = new LocalContainerEntityManagerFactoryBean();
+        managerFactoryBean.setJpaVendorAdapter(vendorAdapter);
+        managerFactoryBean.setPackagesToScan("co.com.ies.pruebas.readonlyreplica");
+        managerFactoryBean.setDataSource(dataSource);
+
+        Properties properties = new Properties();
+        //properties.setProperty("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
+        //properties.setProperty("hibernate.hbm2ddl.auto", "validate");
+
+        managerFactoryBean.setJpaProperties(properties);
+        managerFactoryBean.afterPropertiesSet();
+
+        return managerFactoryBean.getObject();
     }
 }

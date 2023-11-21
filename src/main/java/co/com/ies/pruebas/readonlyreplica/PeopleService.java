@@ -17,7 +17,8 @@ public class PeopleService {
         this.personRepository = personRepository;
     }
 
-    @Transactional(readOnly = true)
+    @ReaderDS
+    //@Transactional(readOnly = true)
     public List<Person> get(){
         Iterable<Person> all = personRepository.findAll();
         return StreamSupport.stream(all.spliterator(), false)
